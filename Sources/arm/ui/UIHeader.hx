@@ -85,21 +85,24 @@ class UIHeader {
 			else if (Context.tool == ToolBake) {
 				ui.changed = false;
 
-				var rtBake = Context.bakeType == BakeAO || Context.bakeType == BakeLightmap || Context.bakeType == BakeBentNormal || Context.bakeType == BakeThickness;
-				var baking = false;
-
 				#if (kha_direct3d12 || kha_vulkan)
-				baking = Context.pdirty > 0;
+				var baking = Context.pdirty > 0;
+				var rtBake = Context.bakeType == BakeAO || Context.bakeType == BakeLightmap || Context.bakeType == BakeBentNormal || Context.bakeType == BakeThickness;
 				if (baking && ui.button(tr("Stop"))) {
 					Context.pdirty = 0;
 					Context.rdirty = 2;
 				}
+				#else
+				var baking = false;
+				var rtBake = false;
 				#end
 
 				if (!baking && ui.button(tr("Bake"))) {
 					Context.pdirty = rtBake ? Context.bakeSamples : 1;
 					Context.rdirty = 3;
-					Context.layerPreviewDirty = true;
+					App.notifyOnNextFrame(function() {
+						Context.layerPreviewDirty = true;
+					});
 					UISidebar.inst.hwnd0.redraws = 2;
 					History.pushUndo = true;
 				}
@@ -306,8 +309,16 @@ class UIHeader {
 					if (symXHandle.changed || symYHandle.changed || symZHandle.changed) {
 						MakeMaterial.parsePaintMaterial();
 					}
-
 					ui._w = _w;
+				}
+
+				if (Context.tool == ToolBlur) {
+					ui._x += 10 * ui.SCALE();
+					var dirHandle = Id.handle({selected: false});
+					Context.blurDirectional = ui.check(dirHandle, tr("Directional"));
+					if (dirHandle.changed) {
+						MakeMaterial.parsePaintMaterial();
+					}
 				}
 			}
 		}

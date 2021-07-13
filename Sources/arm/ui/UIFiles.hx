@@ -22,7 +22,7 @@ class UIFiles {
 	static var showExtensions = false;
 	static var offline = false;
 
-	public static function show(filters: String, isSave: Bool, filesDone: String->Void) {
+	public static function show(filters: String, isSave: Bool, openMultiple: Bool, filesDone: String->Void) {
 
 		#if krom_android
 		if (isSave) {
@@ -32,14 +32,28 @@ class UIFiles {
 		else {
 		#end
 
-		path = isSave ? Krom.saveDialog(filters, "") : Krom.openDialog(filters, "");
-		if (path != null) {
-			while (path.indexOf(Path.sep + Path.sep) >= 0) path = path.replace(Path.sep + Path.sep, Path.sep);
-			path = path.replace("\r", "");
-			filename = path.substr(path.lastIndexOf(Path.sep) + 1);
-			if (isSave) path = path.substr(0, path.lastIndexOf(Path.sep));
-			filesDone(path);
+		if (isSave) {
+			path = Krom.saveDialog(filters, "");
+			if (path != null) {
+				while (path.indexOf(Path.sep + Path.sep) >= 0) path = path.replace(Path.sep + Path.sep, Path.sep);
+				path = path.replace("\r", "");
+				filename = path.substr(path.lastIndexOf(Path.sep) + 1);
+				path = path.substr(0, path.lastIndexOf(Path.sep));
+				filesDone(path);
+			}
 		}
+		else {
+			var paths = Krom.openDialog(filters, "", openMultiple);
+			if (paths != null) {
+				for (path in paths) {
+					while (path.indexOf(Path.sep + Path.sep) >= 0) path = path.replace(Path.sep + Path.sep, Path.sep);
+					path = path.replace("\r", "");
+					filename = path.substr(path.lastIndexOf(Path.sep) + 1);
+					filesDone(path); 
+				}
+			}
+		}
+	
 		releaseKeys();
 
 		#if krom_android
@@ -82,12 +96,16 @@ class UIFiles {
 	}
 
 	@:access(zui.Zui)
+	@:access(arm.sys.File)
 	public static function fileBrowser(ui: Zui, handle: Handle, foldersOnly = false, dragFiles = false, search = ""): String {
 
 		var icons = Res.get("icons.k");
 		var folder = Res.tile50(icons, 2, 1);
 		var file = Res.tile50(icons, 3, 1);
 		var isCloud = handle.text.startsWith("cloud");
+
+		if (isCloud && File.cloud == null) File.initCloud();
+		if (isCloud && File.readDirectory("cloud", false).length == 0) return handle.text;
 
 		if (handle.text == "") handle.text = defaultPath;
 		if (handle.text != lastPath || search != lastSearch) {
@@ -150,28 +168,31 @@ class UIFiles {
 						var filesAll = File.readDirectory(handle.text);
 						var iconFile = f.substr(0, f.lastIndexOf(".")) + "_icon.jpg";
 						if (filesAll.indexOf(iconFile) >= 0) {
-							var abs = File.cacheCloud(handle.text + Path.sep + iconFile);
-							if (abs != null) {
-								iron.data.Data.getImage(abs, function(image: kha.Image) {
-									iron.App.notifyOnInit(function() {
-										if (Layers.pipeCopyRGB == null) Layers.makePipeCopyRGB();
-										icon = kha.Image.createRenderTarget(image.width, image.height);
-										if (f.endsWith(".arm")) { // Used for material sphere alpha cutout
-											icon.g2.begin(false);
-											icon.g2.drawImage(Project.materials[0].image, 0, 0);
-										}
-										else {
-											icon.g2.begin(true, 0xffffffff);
-										}
-										icon.g2.pipeline = Layers.pipeCopyRGB;
-										icon.g2.drawImage(image, 0, 0);
-										icon.g2.pipeline = null;
-										icon.g2.end();
-										iconMap.set(handle.text + Path.sep + f, icon);
+							var empty = iron.RenderPath.active.renderTargets.get("empty_black").image;
+							iconMap.set(handle.text + Path.sep + f, empty);
+							File.cacheCloud(handle.text + Path.sep + iconFile, function(abs: String) {
+								if (abs != null) {
+									iron.data.Data.getImage(abs, function(image: kha.Image) {
+										iron.App.notifyOnInit(function() {
+											if (Layers.pipeCopyRGB == null) Layers.makePipeCopyRGB();
+											icon = kha.Image.createRenderTarget(image.width, image.height);
+											if (f.endsWith(".arm")) { // Used for material sphere alpha cutout
+												icon.g2.begin(false);
+												icon.g2.drawImage(Project.materials[0].image, 0, 0);
+											}
+											else {
+												icon.g2.begin(true, 0xffffffff);
+											}
+											icon.g2.pipeline = Layers.pipeCopyRGB;
+											icon.g2.drawImage(image, 0, 0);
+											icon.g2.pipeline = null;
+											icon.g2.end();
+											iconMap.set(handle.text + Path.sep + f, icon);
+										});
 									});
-								});
-							}
-							else offline = true;
+								}
+								else offline = true;
+							});
 						}
 					}
 					if (icon != null) {
